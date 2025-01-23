@@ -8,11 +8,12 @@ import zipfile
 # Constants and variables
 # ==========================================================
 
-# Path to the zip file containing the data
-ZIP_FILE_PATH = r"C:\Users\bayer\Documents\HCI\Data.zip"
 
-# Target file to process within the extracted folder
-TARGET_FILE_NAME = "crit_bike_02_yolo_0000-0149.csv"
+# Path to the zip file containing the data
+BASE_PATH = Path("C:/Users/bayer/Documents/HCI")
+ZIP_FILE_PATH = BASE_PATH /"Data.zip"
+OUTPUT_FOLDER = BASE_PATH / "Data/Processed_results"
+
 
 # Dimensions of the video frame
 FRAME_WIDTH = 1920
@@ -114,35 +115,6 @@ def calculate_central_detection_size(bboxes: list, frame_width: float, frame_hei
     else:
         return 0.0
 
-# Function to unzip a folder
-def unzip_folder(zip_path: Path, extract_to: Path) -> None:
-    """
-    Extract the contents of a zip file into a specified directory.
-
-    Args:
-    - zip_path (Path): Path to the zip file to be extracted.
-    - extract_to (Path): Path to the directory where the contents will be extracted.
-
-    Returns:
-    - None: Extracts files into the specified directory.
-    """
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        zip_ref.extractall(extract_to)
-
-# Function to zip a folder back
-def zip_folder(folder_path: Path, zip_path: Path) -> None:
-    """
-    Create a zip file from the contents of a specified folder.
-
-    Args:
-    - folder_path (Path): Path to the folder whose contents will be compressed into a zip file.
-    - zip_path (Path): Path where the zip file will be saved. Should end with `.zip`.
-
-    Returns:
-    - None: Creates a zip file at the specified path.
-    """
-    shutil.make_archive(zip_path.with_suffix('').as_posix(), 'zip', folder_path.as_posix())
-
 
 # Function to process YOLO detection data and calculate features for each frame
 def process_yolo_data(yolo_data: pd.DataFrame, frame_width: float, frame_height: float) -> pd.DataFrame:
@@ -188,6 +160,7 @@ def process_yolo_data(yolo_data: pd.DataFrame, frame_width: float, frame_height:
 
     return pd.DataFrame(frame_features)
 
+
 # ==========================================================
 # Main
 # ==========================================================
@@ -206,26 +179,43 @@ def main(zip_file_path: str, target_file_name: str, frame_width: float, frame_he
     Returns:
     - None: Outputs the features to a CSV file and re-zips the folder.
     """
-    zip_file = Path(zip_file_path)
-    extract_folder = Path("unzipped_data")
-    target_file_name = Path(target_file_name)
+    extract_folder = Path(zip_file_path).parent 
+    unzip_folder(zip_file_path, extract_folder)
 
-    unzip_folder(zip_file, extract_folder)
+    # Find all CSV files in the unzipped output folder and its subfolders
+    # Locate the specific `Processed_results` folder
+    processed_results_folder = output_folder
 
-    target_file_path = next(extract_folder.rglob(target_file_name.name), None)
-    if not target_file_path:
-        raise FileNotFoundError(f"File '{target_file_name}' not found in the extracted zip folder.")
+    if not processed_results_folder.exists():
+        print(f"Error: '{processed_results_folder}' does not exist.")
+        return
     
-    yolo_data = pd.read_csv(target_file_path)
-    required_columns = {'frame', 'class', 'confidence', 'x_min', 'y_min', 'x_max', 'y_max'}
-    if not required_columns.issubset(set(yolo_data.columns)):
-        raise ValueError(f"The input file must contain the following columns: {required_columns}")
+    processed_files = {file.stem: file for file in processed_results_folder.rglob("*.csv")}
 
-    features_df = process_yolo_data(yolo_data, frame_width, frame_height)
-    print(features_df)
 
-    zip_folder(extract_folder, zip_file)
-    shutil.rmtree(extract_folder)
+    for file in processed_files.values():
+        print(f"Processing file: {file}")
+        
+        # Read YOLO data
+        yolo_data = pd.read_csv(file)
+        required_columns = {'frame', 'class', 'confidence', 'x_min', 'y_min', 'x_max', 'y_max'}
+        if not required_columns.issubset(set(yolo_data.columns)):
+            print(f"Skipping {file}: Missing required columns")
+            continue
+        # Calculate features
+        features_df = process_yolo_data(yolo_data, frame_width, frame_height)
+        # Derive the output folder structure
+        relative_folder = file.parent.relative_to(processed_results_folder)
+        output_path = output_folder / relative_folder
+        output_path.mkdir(parents=True, exist_ok=True)
 
+        # Save the features DataFrame
+        feature_filename = f"{file.stem}_features.csv"
+        features_df.to_csv(output_path / feature_filename, index=False)
+        print(f"Saved features to: {output_path / feature_filename}")
+
+    # Re-zip the contents of the extracted folder back to Data.zip
+    zip_folder(extract_folder, zip_file_path)
+    print("Re-zipped the folder.")
 if __name__ == "__main__":
-    main(ZIP_FILE_PATH, TARGET_FILE_NAME, FRAME_WIDTH, FRAME_HEIGHT)
+    main(ZIP_FILE_PATH, OUTPUT_FOLDER, FRAME_WIDTH, FRAME_HEIGHT)
