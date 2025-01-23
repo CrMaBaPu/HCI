@@ -1,5 +1,6 @@
 import pandas as pd
 from collections import defaultdict
+from helper import unzip_folder, zip_folder
 import numpy as np
 import shutil
 from pathlib import Path
@@ -166,19 +167,21 @@ def process_yolo_data(yolo_data: pd.DataFrame, frame_width: float, frame_height:
 # ==========================================================
 
 # Main function to handle the workflow
-def main(zip_file_path: str, target_file_name: str, frame_width: float, frame_height: float) -> None:
+# Main function to handle the workflow
+def main(zip_file_path: str, output_folder: Path, frame_width: float, frame_height: float) -> None:
     """
     Main function to extract YOLO features from a specific file within a zipped dataset.
 
     Args:
     - zip_file_path (str): Path to the zip file containing the data folder.
-    - target_file_name (str): Name of the file to process within the extracted folder.
+    - output_folder (Path): Folder where the processed files will be saved (unzipped).
     - frame_width (float): Width of the video frame.
     - frame_height (float): Height of the video frame.
-
+    
     Returns:
     - None: Outputs the features to a CSV file and re-zips the folder.
     """
+
     extract_folder = Path(zip_file_path).parent 
     unzip_folder(zip_file_path, extract_folder)
 
