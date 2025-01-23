@@ -220,5 +220,10 @@ def main(zip_file_path: str, output_folder: Path, frame_width: float, frame_heig
     # Re-zip the contents of the extracted folder back to Data.zip
     zip_folder(extract_folder, zip_file_path)
     print("Re-zipped the folder.")
+    unzipped_folder = extract_folder / "Data"
+    if unzipped_folder.exists() and unzipped_folder.is_dir():
+        shutil.rmtree(unzipped_folder)
+        print(f"Deleted the folder: {unzipped_folder}")
+
 if __name__ == "__main__":
     main(ZIP_FILE_PATH, OUTPUT_FOLDER, FRAME_WIDTH, FRAME_HEIGHT)

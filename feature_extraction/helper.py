@@ -33,4 +33,4 @@ def zip_folder(folder_path: Path, zip_path: Path) -> None:
     folder_path_str = folder_path.as_posix()
 
     # Create the zip file with the contents of the folder (but not the folder itself)
-    shutil.make_archive(zip_path.with_suffix('').as_posix(), 'zip', folder_path_str, '.')
+    shutil.make_archive(zip_path.with_suffix('').as_posix(), 'zip', folder_path_str, 'Data')
