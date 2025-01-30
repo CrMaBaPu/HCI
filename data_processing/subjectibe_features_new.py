@@ -40,4 +40,4 @@ def calculate_subjective_features(gaze_file, yolo_file, output_file):
     return results
 
 # Example usage
-calculate_subjective_features('/Users/ahmadmohamad/Desktop/gpt/crit_car_01_gaze_tracking_Varjo.csv', '/Users/ahmadmohamad/Desktop/gpt/crit_car_01_Object_detection_YOLO.csv', '/Users/ahmadmohamad/Desktop/gpt/output_subjective_features.csv')
+calculate_subjective_features('/Users/ahmadmohamad/Desktop/hci/crit_car_01_gaze_tracking_Varjo.csv', '/Users/ahmadmohamad/Desktop/gpt/crit_car_01_Object_detection_YOLO.csv', '/Users/ahmadmohamad/Desktop/gpt/output_subjective_features.csv')
