@@ -27,12 +27,23 @@ def calculate_subjective_features(gaze_file, yolo_file, output_file):
     # Find the most viewed object class
     most_viewed_class = merged_df['class'].mode()[0] if not merged_df['class'].isna().all() else 'None'
 
+    # Berechnung der Häufigkeit der Blicke auf verschiedene Klassen
+    class_frequency = merged_df['class'].value_counts().to_dict()
+
+    # Häufigste betrachtete Klasse und deren Anzahl
+    most_frequent_class = merged_df['class'].mode()[0] if not merged_df['class'].isna().all() else 'None'
+    most_frequent_class_count = merged_df['class'].value_counts().max() if not merged_df['class'].isna().all() else 0
+
     # Save results
+
     results = {
         'gaze_shift_frequency': gaze_shift_frequency,
         'avg_gaze_shift_distance': avg_gaze_shift_distance,
-        'most_viewed_class': most_viewed_class
+        'most_viewed_class': most_viewed_class,
+        'most_frequent_class': most_frequent_class,
+        'most_frequent_class_count': most_frequent_class_count
     }
+
 
     results_df = pd.DataFrame([results])
     results_df.to_csv(output_file, index=False)
@@ -40,4 +51,4 @@ def calculate_subjective_features(gaze_file, yolo_file, output_file):
     return results
 
 #test_run
-calculate_subjective_features('/Users/ahmadmohamad/Desktop/hci/crit_car_01_gaze_tracking_Varjo.csv', '/Users/ahmadmohamad/Desktop/gpt/crit_car_01_Object_detection_YOLO.csv', '/Users/ahmadmohamad/Desktop/gpt/output_subjective_features.csv')
+calculate_subjective_features('/Users/ahmadmohamad/Desktop/hci/crit_car_01_gaze_tracking_Varjo.csv', '/Users/ahmadmohamad/Desktop/hci/crit_car_01_Object_detection_YOLO.csv', '/Users/ahmadmohamad/Desktop/hci/output_subjective_features.csv')
