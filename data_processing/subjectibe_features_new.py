@@ -39,7 +39,7 @@ def calculate_subjective_features(gaze_file, yolo_file, output_file):
 
     # Calculate viewing duration per class
     merged_df['same_class'] = merged_df['class'] == merged_df['class'].shift(1)
-    merged_df['view_duration'] = merged_df['same_class'].cumsum()  # Laufende Summe für gleiche Klasse
+    merged_df['view_duration'] = merged_df['same_class'].cumsum()  # Running sum for the same class
 
     # Compute total viewing time for each class
     class_durations = merged_df.groupby('class')['view_duration'].max()
