@@ -10,31 +10,21 @@ from helper import zip_folder, unzip_folder
 # ===================================================
 
 yolo_features = [
-        'frame', 'total_objects_all', 'total_classes',
-        'num_per_class_car', 'average_size_car',
-        'num_per_class_bicycle', 'average_size_bicycle',
-        'num_per_class_pedestrian', 'average_size_pedestrian',
-        'cluster_std_dev', 'central_detection_size'
-    ]
+    'frame', 'total_objects_all', 'total_classes',
+    'num_per_class_car', 'average_size_car',
+    'num_per_class_bicycle', 'average_size_bicycle',
+    'num_per_class_pedestrian', 'average_size_pedestrian',
+    'cluster_std_dev', 'central_detection_size'
+]
 
 # Path to the zip file containing the data
 BASE_PATH = Path("C:/Users/bayer/Documents/HCI")
-ZIP_FILE_PATH = BASE_PATH /"Data.zip"
+ZIP_FILE_PATH = BASE_PATH / "Data.zip"
 OUTPUT_FOLDER = BASE_PATH / "Data/Processed_results"
+
 # ===================================================
 # Functions
 # ===================================================
-
-
-# Helper function: Encode labels into low, mid, high
-def encode_label(value):
-    if value <= 33:
-        return "low"
-    elif value <= 66:
-        return "mid"
-    else:
-        return "high"
-
 # Function to process YOLO features data (from *_yolo_*_features.csv)
 def process_yolo_data(yolo_file: Path) -> pd.DataFrame:
     """
@@ -46,22 +36,24 @@ def process_yolo_data(yolo_file: Path) -> pd.DataFrame:
     if not set(required_columns).issubset(yolo_data.columns):
         raise ValueError(f"YOLO file {yolo_file} is missing required feature columns.")
     
-    # Return only the last row with required columns
-    return yolo_data[required_columns].iloc[[-1]]
+    # Compute the mean over all rows
+    mean_values = yolo_data[required_columns].mean().to_frame().T  # Convert to DataFrame with a single row
+    
+    return mean_values
 
 
 # Function to process gaze data
 def process_gaze_data(gaze_file: Path) -> str:
     """
-    Extract the last label (ArduinoData1) and encode it into a category.
+    Extract the most frequent label from 'ArduinoData1' and encode it into a category.
     """
     gaze_data = pd.read_csv(gaze_file)
     if 'ArduinoData1' not in gaze_data.columns:
         raise ValueError(f"Gaze file {gaze_file} is missing 'ArduinoData1' column.")
     
-    # Get the last value in the 'ArduinoData1' column
-    last_label = gaze_data['ArduinoData1'].iloc[-1]
-    return encode_label(last_label)
+    # Get the most frequent value in the 'ArduinoData1' column
+    most_frequent_label = gaze_data['ArduinoData1'].mode()[0]  # Mode returns the most frequent value
+    return most_frequent_label
 
 # Main function to create the dataset
 def create_features_dataset(processed_results_folder: Path) -> pd.DataFrame:
