@@ -26,7 +26,7 @@ scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
 # Initialize the Random Forest model
-rf_model = RandomForestRegressor(n_estimators=1000, criterion="squared_error", random_state=42)
+rf_model = RandomForestRegressor(n_estimators=2000, criterion="squared_error", random_state=42)
 
 # K-Fold Cross-Validation (5 folds in this case)
 kf = KFold(n_splits=10, shuffle=True, random_state=42)
@@ -56,20 +56,20 @@ for train_index, test_index in kf.split(X_scaled):
     # Calculate Residuals
     residuals = y_test - y_pred
     
-    # --- Plot Actual vs Predicted --- #
-    axes[fold * 2 - 2].scatter(y_test, y_pred, color='blue', alpha=0.6, label="Predicted vs Actual")
-    axes[fold * 2 - 2].plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], color='red', linestyle='--', label="Perfect Prediction")
-    axes[fold * 2 - 2].set_title(f"Fold {fold}: Actual vs Predicted (Observed) Values")
-    axes[fold * 2 - 2].set_xlabel("Actual (True) Values")
-    axes[fold * 2 - 2].set_ylabel("Predicted (Observed) Values")
-    axes[fold * 2 - 2].legend()
+    # # --- Plot Actual vs Predicted --- #
+    # axes[fold * 2 - 2].scatter(y_test, y_pred, color='blue', alpha=0.6, label="Predicted vs Actual")
+    # axes[fold * 2 - 2].plot([min(y_test), max(y_test)], [min(y_test), max(y_test)], color='red', linestyle='--', label="Perfect Prediction")
+    # axes[fold * 2 - 2].set_title(f"Fold {fold}: Actual vs Predicted (Observed) Values")
+    # axes[fold * 2 - 2].set_xlabel("Actual (True) Values")
+    # axes[fold * 2 - 2].set_ylabel("Predicted (Observed) Values")
+    # axes[fold * 2 - 2].legend()
     
-    # --- Plot Residuals --- #
-    axes[fold * 2 - 1].hist(residuals, bins=20, edgecolor='black', alpha=0.7)
-    axes[fold * 2 - 1].axvline(0, color='red', linestyle='--')
-    axes[fold * 2 - 1].set_title(f"Fold {fold}: Residuals Distribution")
-    axes[fold * 2 - 1].set_xlabel("Residuals")
-    axes[fold * 2 - 1].set_ylabel("Frequency")
+    # # --- Plot Residuals --- #
+    # axes[fold * 2 - 1].hist(residuals, bins=20, edgecolor='black', alpha=0.7)
+    # axes[fold * 2 - 1].axvline(0, color='red', linestyle='--')
+    # axes[fold * 2 - 1].set_title(f"Fold {fold}: Residuals Distribution")
+    # axes[fold * 2 - 1].set_xlabel("Residuals")
+    # axes[fold * 2 - 1].set_ylabel("Frequency")
     
     # Calculate evaluation metrics for this fold
     mae = mean_absolute_error(y_test, y_pred)
