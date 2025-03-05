@@ -55,47 +55,17 @@ def match_gaze_to_objects(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame) -> d
     for gaze_row in gaze_data.itertuples(index=False):
         frame, gaze_x, gaze_y = int(gaze_row.VideoFrame), gaze_row.PixelX, gaze_row.PixelY
 
+        # Flip the gaze Y-coordinate to match the YOLO coordinate system
+        gaze_y_flipped = FRAME_HEIGHT - gaze_y
+
         if frame in yolo_data['frame'].values:
             frame_bboxes = yolo_data[yolo_data['frame'] == frame]
 
             for bbox_row in frame_bboxes.itertuples(index=False):
-                if is_gaze_inside_bbox(gaze_x, gaze_y, (bbox_row.x_min, bbox_row.y_min, bbox_row.x_max, bbox_row.y_max)):
+                if is_gaze_inside_bbox(gaze_x, gaze_y_flipped, (bbox_row.x_min, bbox_row.y_min, bbox_row.x_max, bbox_row.y_max)):
                     gaze_to_objects[frame].append(bbox_row.cls)
 
     return gaze_to_objects
-
-# Function to compute gaze-based statistics
-def compute_gaze_statistics(gaze_to_objects: dict) -> dict:
-    """
-    Computes statistics on gaze fixations.
-
-    Args:
-    - gaze_to_objects (dict): Dictionary where keys are frames and values are lists of detected object classes.
-    
-    Returns:
-    - dict: Contains statistics including average fixation time, most viewed class, 
-            and most frequently viewed class.
-    """
-    gaze_duration_per_class = defaultdict(float)
-    gaze_count_per_class = defaultdict(int)
-
-    for frame, classes in gaze_to_objects.items():
-        unique_classes = set(classes)  # Avoid counting multiple detections of the same object per frame
-        for cls in unique_classes:
-            gaze_duration_per_class[cls] += 1
-            gaze_count_per_class[cls] += 1
-
-    avg_fixation_time = {cls: duration / gaze_count_per_class[cls] for cls, duration in gaze_duration_per_class.items()}
-    most_viewed_class = max(gaze_duration_per_class, key=gaze_duration_per_class.get, default=None)
-    most_frequent_class = max(gaze_count_per_class, key=gaze_count_per_class.get, default=None)
-
-    return {
-        "average_fixation_time": avg_fixation_time,
-        "most_viewed_class": most_viewed_class,
-        "most_frequent_class": most_frequent_class,
-        "gaze_duration_per_class": gaze_duration_per_class,
-        "gaze_count_per_class": gaze_count_per_class,
-    }
 
 
 # Function to calculate the average size of bounding boxes for a given class.
@@ -212,7 +182,7 @@ def process_yolo_data(yolo_data: pd.DataFrame, frame_width: float, frame_height:
     for row in yolo_data.itertuples(index=False):
         grouped_by_frame[row.frame].append(row)
 
-    target_classes = ['car', 'bicycle', 'pedestrian']
+    target_classes = ['car', 'bicycle', 'person']
     for frame, bboxes in grouped_by_frame.items():
         clscounts = defaultdict(int)
         for _, cls, _, _, _, _, _ in bboxes:  # renamed `class` to `cls`
@@ -238,49 +208,76 @@ def process_yolo_data(yolo_data: pd.DataFrame, frame_width: float, frame_height:
 # Function to process gaze data alongside YOLO data
 def process_gaze_data(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame) -> pd.DataFrame:
     """
-    Process gaze data to calculate gaze-related features for each frame.
-
+    Process gaze data to calculate gaze-related features for each frame, 
+    including gaze shifts, duration counters, and class-specific gaze tracking.
+    
     Args:
-    - gaze_data (pd.DataFrame): A DataFrame containing gaze data with columns: VideoFrame, PixelX, PixelY.
-    - yolo_data (pd.DataFrame): A DataFrame containing YOLO detection data with columns: frame, class, confidence, x_min, y_min, x_max, y_max.
+    - gaze_data (pd.DataFrame): Gaze data with ['VideoFrame', 'PixelX', 'PixelY'].
+    - yolo_data (pd.DataFrame): YOLO detections with ['frame', 'cls', 'x_min', 'y_min', 'x_max', 'y_max'].
 
     Returns:
-    - pd.DataFrame: A DataFrame where each row corresponds to a frame, containing gaze-related features.
+    - pd.DataFrame: DataFrame with features for each frame, merged with YOLO.
     """
-    # Initialize the list to hold features for each frame
+    # Sort gaze data by frame
+    gaze_data = gaze_data.sort_values(by="VideoFrame").reset_index(drop=True)
+
+    # Trackers
+    shift_counter = 0
+    duration_counter = 0
+    prev_objects = set()
+    
+    # Track class-specific features
+    target_classes = ['car', 'bicycle', 'person']
+    class_duration = {cls: 0 for cls in target_classes}
+    class_shift_count = {cls: 0 for cls in target_classes}
+    
     frame_features = []
 
-    # Match gaze data to YOLO detections by frame
-    gaze_to_objects = match_gaze_to_objects(gaze_data, yolo_data)
-
-    # Calculate statistics on the matched gaze-to-objects mapping
-    gaze_stats = compute_gaze_statistics(gaze_to_objects)
-
-    # Loop through each frame in the gaze data (unique frames)
     for frame in gaze_data['VideoFrame'].unique():
-        # Count the total number of gaze points for this frame
-        total_gaze_points = len(gaze_data[gaze_data['VideoFrame'] == frame])
+        # Get gaze point for this frame
+        gaze_row = gaze_data[gaze_data['VideoFrame'] == frame].iloc[0]
+        gaze_x, gaze_y = gaze_row.PixelX, gaze_row.PixelY
         
-        # Prepare the features dictionary for this frame
-        gaze_features = {
-            'frame': frame,  # Ensure the frame column is named 'frame'
-            'total_gaze_points': total_gaze_points
-        }
+        # Find objects looked at in this frame
+        objects_looked_at = set()
+        if frame in yolo_data['frame'].values:
+            frame_bboxes = yolo_data[yolo_data['frame'] == frame]
+            for bbox_row in frame_bboxes.itertuples(index=False):
+                if is_gaze_inside_bbox(gaze_x, gaze_y, (bbox_row.x_min, bbox_row.y_min, bbox_row.x_max, bbox_row.y_max)):
+                    objects_looked_at.add(bbox_row.cls)
+        
+        # Detect shift (if gaze moves to different objects)
+        if objects_looked_at != prev_objects:
+            shift_counter = 1  # Mark shift event
+            duration_counter = 1  # Reset duration counter
+        else:
+            shift_counter = 0
+            duration_counter += 1  # Continue counting duration
+        
+        # Update class-specific counters
+        for cls in target_classes:
+            if cls in objects_looked_at:
+                class_duration[cls] += 1  # Increase duration counter for this class
+                if cls not in prev_objects:
+                    class_shift_count[cls] += 1  # Increase shift count when first looking at this class
+            else:
+                class_duration[cls] = 0  # Reset duration counter if not being looked at
+        
+        # Store frame features
+        frame_features.append({
+            "frame": frame,
+            "shift": shift_counter,
+            "duration": duration_counter,
+            "objects_looked_at": list(objects_looked_at),  # Can be used later
+            **{f"{cls}_duration": class_duration[cls] for cls in target_classes},
+            **{f"{cls}_shift_count": class_shift_count[cls] for cls in target_classes}
+        })
 
-        # Add gaze statistics to the features dictionary
-        for key, value in gaze_stats.items():
-            gaze_features[key] = value
+        # Update previous objects looked at
+        prev_objects = objects_looked_at
 
-        # Append the features for this frame to the list
-        frame_features.append(gaze_features)
+    return pd.DataFrame(frame_features)
 
-    # Convert the frame_features list to a DataFrame
-    gaze_features_df = pd.DataFrame(frame_features)
-
-    # Ensure the column is named 'frame' for consistency with YOLO data
-    gaze_features_df.rename(columns={'VideoFrame': 'frame'}, inplace=True)
-
-    return gaze_features_df
 
 # ==========================================================
 # Main
