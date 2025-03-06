@@ -390,12 +390,14 @@ def process_yolo_data(yolo_data: pd.DataFrame, frame_width: float, frame_height:
 
 
 # # Function to process gaze data alongside YOLO data
+# Modify the process_gaze_data function to include the "label" feature
+
 def process_gaze_data(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame, target_classes: list) -> pd.DataFrame:
     """
     Process gaze data to calculate the relevant features for specific object classes.
 
     Args:
-    - gaze_data (pd.DataFrame): Gaze data with columns: ['VideoFrame', 'PixelX', 'PixelY'].
+    - gaze_data (pd.DataFrame): Gaze data with columns: ['VideoFrame', 'PixelX', 'PixelY', 'ArduinoData1'].
     - yolo_data (pd.DataFrame): YOLO detections with columns: ['frame', 'cls', 'x_min', 'y_min', 'x_max', 'y_max'].
     - target_classes (list): List of target object classes to track.
 
@@ -417,11 +419,15 @@ def process_gaze_data(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame, target_c
     # Feature 5: Time Spent in Each Object's Bounding Box
     time_spent_in_bbox = time_spent_in_each_bbox(gaze_data, yolo_data)
 
+    # Calculate the most common ArduinoData1 value and set it as the label
+    most_common_arduino = gaze_data['ArduinoData1'].mode()[0]  # Get the most frequent ArduinoData1 value
+    
     # Prepare final features
     features = {
         'gaze_change_frequency': gaze_change_freq,
         'average_gaze_duration': avg_gaze_duration,
         'gaze_dispersion': gaze_dispersion,
+        'label': most_common_arduino  # Add the "label" feature
     }
 
     # Extract time spent in relevant classes (car, person, bicycle)
@@ -438,8 +444,6 @@ def process_gaze_data(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame, target_c
     features_df = pd.DataFrame([features])
     
     return features_df
-
-
 
 # ==========================================================
 # Main
