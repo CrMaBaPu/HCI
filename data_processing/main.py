@@ -1,7 +1,7 @@
 from pathlib import Path
-from data_processing.yolo_object_detection import generate_yolo_csv
-from data_processing.processing import process_video, process_gaze_data, process_yolo_data
-from data_processing.segmentation import create_segments
+from yolo_object_detection import generate_yolo_csv
+from processing import process_video, process_gaze_data, process_yolo_data
+from segmentation import create_segments
 
 def main():
     """
@@ -16,10 +16,10 @@ def main():
     video_folder = base_path / "Data/Input_traffic_videos"
     varjo_folder = base_path / "Data/Gaze_tracking_Varjo"
     
-    # # Generate YOLO CSV files if not already done
-    # if not any(yolo_folder.glob("*.csv")):
-    #     print("Generating YOLO detection CSV files...")
-    #     generate_yolo_csv(video_folder, yolo_folder)
+    # Generate YOLO CSV files if not already done
+    if not any(yolo_folder.glob("*.csv")):
+        print("Generating YOLO detection CSV files...")
+        generate_yolo_csv(video_folder, yolo_folder)
     
     
     # Collect all video, YOLO, and gaze files

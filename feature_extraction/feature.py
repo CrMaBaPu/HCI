@@ -4,7 +4,7 @@ from helper import unzip_folder, zip_folder
 import numpy as np
 import shutil
 from pathlib import Path
-import zipfile
+
 # ==========================================================
 # Constants and variables
 # ==========================================================
@@ -22,51 +22,219 @@ FRAME_HEIGHT = 1080
 # Functions
 # ==========================================================
 
-# Function to check if a gaze point is inside a bounding box
-def is_gaze_inside_bbox(gaze_x: float, gaze_y: float, bbox: tuple) -> bool:
+# ==========================================================
+# Functions
+# ==========================================================
+# how frequently gaze locations change significantly between consecutive gaze points.
+def gaze_change_frequency(gaze_data: pd.DataFrame, threshold: float = 50) -> float:
     """
-    Check if the gaze coordinates fall inside a given bounding box.
+    Calculate the frequency of significant gaze location changes (i.e., gaze shifts).
     
     Args:
-    - gaze_x (float): Gaze X coordinate.
-    - gaze_y (float): Gaze Y coordinate.
-    - bbox (tuple): Bounding box in the format (x_min, y_min, x_max, y_max).
+    - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
+    - threshold (float): Minimum distance (in pixels) between two consecutive gaze points to consider it a change.
     
     Returns:
-    - bool: True if the gaze point is inside the bounding box, otherwise False.
+    - float: Frequency of significant gaze location changes.
     """
-    x_min, y_min, x_max, y_max = bbox
-    return x_min <= gaze_x <= x_max and y_min <= gaze_y <= y_max
-
-# Function to map gaze points to object classes based on bounding boxes
-def match_gaze_to_objects(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame) -> dict:
-    """
-    Matches gaze points to detected objects based on bounding boxes.
-
-    Args:
-    - gaze_data (pd.DataFrame): Gaze data with columns ['VideoFrame', 'PixelX', 'PixelY'].
-    - yolo_data (pd.DataFrame): YOLO detections with ['frame', 'class', 'x_min', 'y_min', 'x_max', 'y_max'].
-    
-    Returns:
-    - dict: A dictionary mapping frame numbers to a list of object classes the gaze fell upon.
-    """
-    gaze_to_objects = defaultdict(list)
+    gaze_changes = 0
+    previous_gaze = None
 
     for gaze_row in gaze_data.itertuples(index=False):
-        frame, gaze_x, gaze_y = int(gaze_row.VideoFrame), gaze_row.PixelX, gaze_row.PixelY
+        current_gaze = (gaze_row.PixelX, gaze_row.PixelY)
+        
+        if previous_gaze is not None:
+            distance = np.sqrt((current_gaze[0] - previous_gaze[0])**2 + (current_gaze[1] - previous_gaze[1])**2)
+            if distance >= threshold:
+                gaze_changes += 1
+        
+        previous_gaze = current_gaze
+    
+    # Return the frequency of gaze changes (scaled by the number of gaze points)
+    return gaze_changes / len(gaze_data)
+# average duration (in frames) that the gaze stays in a particular location.
+def average_gaze_duration(gaze_data: pd.DataFrame, fixation_threshold: float = 10) -> float:
+    """
+    Calculate the average gaze duration (i.e., how long the gaze stays on a particular point).
+    
+    Args:
+    - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
+    - fixation_threshold (int): The minimum number of frames required to consider a gaze as a fixation.
+    
+    Returns:
+    - float: The average gaze duration (in frames).
+    """
+    gaze_durations = []
+    current_fixation = None
 
-        # Flip the gaze Y-coordinate to match the YOLO coordinate system
-        gaze_y_flipped = FRAME_HEIGHT - gaze_y
+    for gaze_row in gaze_data.itertuples(index=False):
+        current_gaze = (gaze_row.PixelX, gaze_row.PixelY)
+        
+        if current_fixation is None:
+            current_fixation = (current_gaze, 1)
+        elif current_gaze == current_fixation[0]:
+            current_fixation = (current_gaze, current_fixation[1] + 1)
+        else:
+            if current_fixation[1] >= fixation_threshold:
+                gaze_durations.append(current_fixation[1])
+            current_fixation = (current_gaze, 1)
+    
+    if current_fixation and current_fixation[1] >= fixation_threshold:
+        gaze_durations.append(current_fixation[1])
+    
+    if gaze_durations:
+        return np.mean(gaze_durations)
+    else:
+        return 0.0
+    
+# average Euclidean distance between consecutive gaze points.   
+def distance_between_consecutive_gaze_points(gaze_data: pd.DataFrame) -> float:
+    """
+    Calculate the average distance between consecutive gaze points.
+    
+    Args:
+    - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
+    
+    Returns:
+    - float: The average distance between consecutive gaze points.
+    """
+    distances = []
+    previous_gaze = None
 
-        if frame in yolo_data['frame'].values:
-            frame_bboxes = yolo_data[yolo_data['frame'] == frame]
+    for gaze_row in gaze_data.itertuples(index=False):
+        current_gaze = (gaze_row.PixelX, gaze_row.PixelY)
+        
+        if previous_gaze is not None:
+            distance = np.sqrt((current_gaze[0] - previous_gaze[0])**2 + (current_gaze[1] - previous_gaze[1])**2)
+            distances.append(distance)
+        
+        previous_gaze = current_gaze
+    
+    if distances:
+        return np.mean(distances)
+    else:
+        return 0.0
 
-            for bbox_row in frame_bboxes.itertuples(index=False):
-                if is_gaze_inside_bbox(gaze_x, gaze_y_flipped, (bbox_row.x_min, bbox_row.y_min, bbox_row.x_max, bbox_row.y_max)):
-                    gaze_to_objects[frame].append(bbox_row.cls)
+# counts how many fixations and average duration for each object class.
+def fixation_count_per_object_class(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame, target_classes: list, threshold: float = 10) -> pd.DataFrame:
+    """
+    Count how many fixations and average duration for each object class detected by YOLO.
+    
+    Args:
+    - gaze_data (pd.DataFrame): Gaze data with columns: ['VideoFrame', 'PixelX', 'PixelY'].
+    - yolo_data (pd.DataFrame): YOLO data with columns: ['frame', 'cls', 'x_min', 'y_min', 'x_max', 'y_max'].
+    - target_classes (list): List of target object classes to track fixations for.
+    - threshold (int): Number of frames to consider for a gaze fixation.
+    
+    Returns:
+    - pd.DataFrame: A DataFrame containing fixation count and average duration per target class.
+    """
+    fixation_counts = defaultdict(int)
+    fixation_durations = defaultdict(list)
+    current_fixation = None
 
-    return gaze_to_objects
+    for gaze_row in gaze_data.itertuples(index=False):
+        frame = gaze_row.VideoFrame
+        gaze_x, gaze_y = gaze_row.PixelX, gaze_row.PixelY
 
+        # Get object classes intersecting with gaze point
+        object_classes = get_intersecting_object_classes(gaze_x, gaze_y, frame, yolo_data)
+
+        if current_fixation is None:
+            current_fixation = (gaze_x, gaze_y, 1, object_classes)
+        elif (gaze_x, gaze_y) == (current_fixation[0], current_fixation[1]):
+            current_fixation = (gaze_x, gaze_y, current_fixation[2] + 1, object_classes)
+        else:
+            if current_fixation[2] >= threshold:
+                for cls in current_fixation[3]:
+                    fixation_counts[cls] += 1
+                    fixation_durations[cls].append(current_fixation[2])
+            current_fixation = (gaze_x, gaze_y, 1, object_classes)
+
+    if current_fixation and current_fixation[2] >= threshold:
+        for cls in current_fixation[3]:
+            fixation_counts[cls] += 1
+            fixation_durations[cls].append(current_fixation[2])
+
+    # Prepare the output DataFrame
+    fixation_data = []
+    for cls in target_classes:
+        num_fixations = fixation_counts.get(cls, 0)
+        avg_duration = np.mean(fixation_durations.get(cls, [])) if fixation_durations.get(cls) else 0.0
+        fixation_data.append({'class': cls, 'fixation_count': num_fixations, 'average_duration': avg_duration})
+
+    return pd.DataFrame(fixation_data)
+
+#how much time the gaze spends inside the bounding box of each object class.
+def time_spent_in_each_bbox(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame) -> dict:
+    """
+    Calculate how much time the gaze spends in each object class's bounding box.
+    
+    Args:
+    - gaze_data (pd.DataFrame): Gaze data with columns: ['VideoFrame', 'PixelX', 'PixelY'].
+    - yolo_data (pd.DataFrame): YOLO detections with columns: ['frame', 'cls', 'x_min', 'y_min', 'x_max', 'y_max'].
+    
+    Returns:
+    - dict: A dictionary with object class labels as keys and time spent (in frames) as values.
+    """
+    time_spent = defaultdict(int)
+    
+    for gaze_row in gaze_data.itertuples(index=False):
+        frame = gaze_row.VideoFrame
+        gaze_x, gaze_y = gaze_row.PixelX, gaze_row.PixelY
+        
+        # Get the object classes the gaze point intersects with
+        object_classes = get_intersecting_object_classes(gaze_x, gaze_y, frame, yolo_data)
+        
+        for cls in object_classes:
+            time_spent[cls] += 1
+    
+    return time_spent
+
+
+# Function to check if a gaze point is inside a bounding box
+def is_gaze_inside_bbox(gaze_x: float, gaze_y: float, bbox: tuple) -> bool:
+        """
+        Check if the gaze coordinates fall inside a given bounding box.
+
+        Args:
+        - gaze_x (float): Gaze X coordinate.
+        - gaze_y (float): Gaze Y coordinate.
+        - bbox (tuple): Bounding box in the format (x_min, y_min, x_max, y_max).
+
+        Returns:
+        - bool: True if the gaze point is inside the bounding box, otherwise False.
+        """
+        x_min, y_min, x_max, y_max = bbox
+        return x_min <= gaze_x <= x_max and y_min <= gaze_y <= y_max
+# Function to get the object classes that a gaze point intersects with
+def get_intersecting_object_classes(gaze_x: float, gaze_y: float, frame: int, yolo_data: pd.DataFrame) -> list:
+    """
+    This function checks which object classes the gaze point intersects with based on YOLO detections.
+
+    Args:
+    - gaze_x (float): Gaze X-coordinate.
+    - gaze_y (float): Gaze Y-coordinate.
+    - frame (int): Frame number to check for object detections.
+    - yolo_data (pd.DataFrame): YOLO detections for all frames with columns: ['frame', 'cls', 'x_min', 'y_min', 'x_max', 'y_max'].
+
+    Returns:
+    - list: A list of object classes the gaze point intersects with.
+    """
+    intersecting_classes = []
+
+    # Flip the gaze Y-coordinate to match YOLO coordinate system
+    gaze_y_flipped = FRAME_HEIGHT - gaze_y
+
+    # Get all the detections for the current frame
+    frame_bboxes = yolo_data[yolo_data['frame'] == frame]
+
+    # Iterate over all YOLO detections in this frame
+    for bbox_row in frame_bboxes.itertuples(index=False):
+        if is_gaze_inside_bbox(gaze_x, gaze_y_flipped, (bbox_row.x_min, bbox_row.y_min, bbox_row.x_max, bbox_row.y_max)):
+            intersecting_classes.append(bbox_row.cls)
+
+    return intersecting_classes
 
 # Function to calculate the average size of bounding boxes for a given class.
 def calculate_average_size(bboxes: list) -> float:
@@ -202,88 +370,80 @@ def process_yolo_data(yolo_data: pd.DataFrame, frame_width: float, frame_height:
         features['cluster_std_dev'] = calculate_cluster_std_from_center(bboxes, frame_width, frame_height)
         features['central_detection_size'] = calculate_central_detection_size(bboxes, frame_width, frame_height)
         frame_features.append(features)
+        yolo_features_df = pd.DataFrame(frame_features)
 
-    return pd.DataFrame(frame_features)
+        # Aggregate the features to have one row per file
+        aggregated_features = {
+            'total_objects_all': yolo_features_df['total_objects_all'].sum(),  # Sum makes sense for total counts
+            'total_classes': yolo_features_df['total_classes'].nunique(),  # Unique count of different detected classes
+            'cluster_std_dev': yolo_features_df['cluster_std_dev'].mean(),  # Mean makes sense for variability
+            'central_detection_size': yolo_features_df['central_detection_size'].mean(),  # Mean for central object size
+        }
 
-# Function to process gaze data alongside YOLO data
-def process_gaze_data(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame) -> pd.DataFrame:
+        # Aggregate per class
+        target_classes = ['car', 'bicycle', 'person']
+        for cls in target_classes:
+            aggregated_features[f'num_per_cls{cls}'] = yolo_features_df[f'num_per_cls{cls}'].sum()  # Sum makes sense
+            aggregated_features[f'average_size_{cls}'] = yolo_features_df[f'average_size_{cls}'].mean()  # Mean makes sense
+
+        return pd.DataFrame([aggregated_features])
+
+
+# # Function to process gaze data alongside YOLO data
+def process_gaze_data(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame, target_classes: list) -> pd.DataFrame:
     """
-    Process gaze data to calculate gaze-related features for each frame, 
-    including gaze shifts, duration counters, and class-specific gaze tracking.
-    
+    Process gaze data to calculate the relevant features for specific object classes.
+
     Args:
-    - gaze_data (pd.DataFrame): Gaze data with ['VideoFrame', 'PixelX', 'PixelY'].
-    - yolo_data (pd.DataFrame): YOLO detections with ['frame', 'cls', 'x_min', 'y_min', 'x_max', 'y_max'].
+    - gaze_data (pd.DataFrame): Gaze data with columns: ['VideoFrame', 'PixelX', 'PixelY'].
+    - yolo_data (pd.DataFrame): YOLO detections with columns: ['frame', 'cls', 'x_min', 'y_min', 'x_max', 'y_max'].
+    - target_classes (list): List of target object classes to track.
 
     Returns:
-    - pd.DataFrame: DataFrame with features for each frame, merged with YOLO.
+    - pd.DataFrame: A DataFrame containing calculated gaze features for each target class.
     """
-    # Sort gaze data by frame
-    gaze_data = gaze_data.sort_values(by="VideoFrame").reset_index(drop=True)
-
-    # Trackers
-    shift_counter = 0
-    duration_counter = 0
-    prev_objects = set()
+    # Feature 1: Gaze Change Frequency
+    gaze_change_freq = gaze_change_frequency(gaze_data)
     
-    # Track class-specific features
-    target_classes = ['car', 'bicycle', 'person']
-    class_duration = {cls: 0 for cls in target_classes}
-    class_shift_count = {cls: 0 for cls in target_classes}
+    # Feature 2: Average Gaze Duration
+    avg_gaze_duration = average_gaze_duration(gaze_data)
     
-    frame_features = []
+    # Feature 3: Distance Between Consecutive Gaze Points
+    gaze_dispersion = distance_between_consecutive_gaze_points(gaze_data)
+    
+    # Feature 4: Fixation Count and Duration per Object Class
+    fixation_data = fixation_count_per_object_class(gaze_data, yolo_data, target_classes)
+    
+    # Feature 5: Time Spent in Each Object's Bounding Box
+    time_spent_in_bbox = time_spent_in_each_bbox(gaze_data, yolo_data)
 
-    for frame in gaze_data['VideoFrame'].unique():
-        # Get gaze point for this frame
-        gaze_row = gaze_data[gaze_data['VideoFrame'] == frame].iloc[0]
-        gaze_x, gaze_y = gaze_row.PixelX, gaze_row.PixelY
-        
-        # Find objects looked at in this frame
-        objects_looked_at = set()
-        if frame in yolo_data['frame'].values:
-            frame_bboxes = yolo_data[yolo_data['frame'] == frame]
-            for bbox_row in frame_bboxes.itertuples(index=False):
-                if is_gaze_inside_bbox(gaze_x, gaze_y, (bbox_row.x_min, bbox_row.y_min, bbox_row.x_max, bbox_row.y_max)):
-                    objects_looked_at.add(bbox_row.cls)
-        
-        # Detect shift (if gaze moves to different objects)
-        if objects_looked_at != prev_objects:
-            shift_counter = 1  # Mark shift event
-            duration_counter = 1  # Reset duration counter
-        else:
-            shift_counter = 0
-            duration_counter += 1  # Continue counting duration
-        
-        # Update class-specific counters
-        for cls in target_classes:
-            if cls in objects_looked_at:
-                class_duration[cls] += 1  # Increase duration counter for this class
-                if cls not in prev_objects:
-                    class_shift_count[cls] += 1  # Increase shift count when first looking at this class
-            else:
-                class_duration[cls] = 0  # Reset duration counter if not being looked at
-        
-        # Store frame features
-        frame_features.append({
-            "frame": frame,
-            "shift": shift_counter,
-            "duration": duration_counter,
-            "objects_looked_at": list(objects_looked_at),  # Can be used later
-            **{f"{cls}_duration": class_duration[cls] for cls in target_classes},
-            **{f"{cls}_shift_count": class_shift_count[cls] for cls in target_classes}
-        })
+    # Prepare final features
+    features = {
+        'gaze_change_frequency': gaze_change_freq,
+        'average_gaze_duration': avg_gaze_duration,
+        'gaze_dispersion': gaze_dispersion,
+    }
 
-        # Update previous objects looked at
-        prev_objects = objects_looked_at
+    # Extract time spent in relevant classes (car, person, bicycle)
+    features['time_spent_in_car'] = time_spent_in_bbox.get('car', 0)
+    features['time_spent_in_person'] = time_spent_in_bbox.get('person', 0)
+    features['time_spent_in_bicycle'] = time_spent_in_bbox.get('bicycle', 0)
 
-    return pd.DataFrame(frame_features)
+    # Extract fixation count for relevant classes (car, person, bicycle)
+    features['fixation_count_car'] = fixation_data[fixation_data['class'] == 'car']['fixation_count'].values[0] if 'car' in fixation_data['class'].values else 0
+    features['fixation_count_person'] = fixation_data[fixation_data['class'] == 'person']['fixation_count'].values[0] if 'person' in fixation_data['class'].values else 0
+    features['fixation_count_bicycle'] = fixation_data[fixation_data['class'] == 'bicycle']['fixation_count'].values[0] if 'bicycle' in fixation_data['class'].values else 0
+
+    # Merge fixation data for target classes into the features
+    features_df = pd.DataFrame([features])
+    
+    return features_df
+
 
 
 # ==========================================================
 # Main
 # ==========================================================
-
-# Main function to handle the workflow
 # Main function to handle the workflow
 def main(zip_file_path: str, output_folder: Path, frame_width: float, frame_height: float) -> None:
     """
@@ -317,45 +477,42 @@ def main(zip_file_path: str, output_folder: Path, frame_width: float, frame_heig
                 if "yolo" in name.lower() and not name.endswith("features")}
 
     gaze_files = {name: file for name, file in processed_files.items() 
-                if "gaze" in name.lower()}
-    
-        # Print the lists of YOLO and gaze files found
-    print(f"Found {len(yolo_files)} YOLO files:")
-    for name, file in yolo_files.items():
-        print(f"  YOLO file: {file}")
-
-    print(f"Found {len(gaze_files)} Gaze files:")
-    for name, file in gaze_files.items():
-        print(f"  Gaze file: {file}")
+                if "gaze" in name.lower()and not name.endswith("features")}
 
 
     for name, yolo_file in yolo_files.items():
-        #Read data
+
+         # Read YOLO data
         yolo_data = pd.read_csv(yolo_file)
         # Rename the 'class' column to 'cls' in the YOLO dataframe
         yolo_data.rename(columns={'class': 'cls'}, inplace=True)
-
-        # Find matching gaze file
-        matching_gaze_file = gaze_files.get(name.replace("_yolo", "_gaze"), None)
-        gaze_data = pd.read_csv(matching_gaze_file)
-
-        # Calculate features
+        
+        # Process YOLO features
         yolo_features = process_yolo_data(yolo_data, frame_width, frame_height)
-        gaze_features = process_gaze_data(gaze_data, yolo_data)
-        # Merge features on 'frame'
-        combined_features = pd.merge(yolo_features, gaze_features, on="frame", how="left").fillna(0)
 
-        # Generate output file name
-        base_name = yolo_file.stem.replace("_yolo_", "_features_")
-        feature_filename = f"{base_name}.csv"
-        # Derive the output folder structure
+        # Save YOLO features
+        base_name = yolo_file.stem
+        feature_filename = f"{base_name}_yolo_features.csv"
         relative_folder = yolo_file.parent.relative_to(processed_results_folder)
         output_path = output_folder / relative_folder
         output_path.mkdir(parents=True, exist_ok=True)
+        yolo_features.to_csv(output_path / feature_filename, index=False)
+        print(f"Saved YOLO features to: {output_path / feature_filename}")
 
-        # Save the merged features DataFrame
-        combined_features.to_csv(output_path / feature_filename, index=False)
-        print(f"Saved combined features to: {output_path / feature_filename}")
+        # Find matching gaze file
+        matching_gaze_file = gaze_files.get(name.replace("_yolo", "_gaze"), None)
+        if matching_gaze_file:
+            gaze_data = pd.read_csv(matching_gaze_file)
+
+            # Process gaze features
+            gaze_features = process_gaze_data(gaze_data, yolo_data, target_classes = ['car', 'bicycle', 'person'])
+
+            # Save gaze features
+            base_name = matching_gaze_file.stem
+            feature_filename = f"{base_name}_gaze_features.csv"
+            output_path.mkdir(parents=True, exist_ok=True)
+            gaze_features.to_csv(output_path / feature_filename, index=False)
+            print(f"Saved Gaze features to: {output_path / feature_filename}")
 
     # Re-zip the contents of the extracted folder back to Data.zip
     zip_folder(extract_folder, zip_file_path)
