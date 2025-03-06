@@ -8,16 +8,6 @@ from helper import zip_folder, unzip_folder
 # ===================================================
 # Constants and Variables
 # ===================================================
-
-yolo_features = [
-    'frame', 'total_objects_all', 'total_classes',
-    'num_per_class_car', 'average_size_car',
-    'num_per_class_bicycle', 'average_size_bicycle',
-    'num_per_class_pedestrian', 'average_size_pedestrian',
-    'cluster_std_dev', 'central_detection_size'
-]
-
-# Path to the zip file containing the data
 BASE_PATH = Path("C:/Users/bayer/Documents/HCI")
 ZIP_FILE_PATH = BASE_PATH / "Data.zip"
 OUTPUT_FOLDER = BASE_PATH / "Data/Processed_results"
@@ -25,80 +15,66 @@ OUTPUT_FOLDER = BASE_PATH / "Data/Processed_results"
 # ===================================================
 # Functions
 # ===================================================
-# Function to process YOLO features data (from *_yolo_*_features.csv)
-def process_yolo_data(yolo_file: Path) -> pd.DataFrame:
-    """
-    Extract the required features from the YOLO file, only retaining the last row.
-    """
-    yolo_data = pd.read_csv(yolo_file)
-    required_columns = yolo_features
-    
-    if not set(required_columns).issubset(yolo_data.columns):
-        raise ValueError(f"YOLO file {yolo_file} is missing required feature columns.")
-    
-    # Compute the mean over all rows
-    mean_values = yolo_data[required_columns].mean().to_frame().T  # Convert to DataFrame with a single row
-    
-    return mean_values
-
-
-# Function to process gaze data
-def process_gaze_data(gaze_file: Path) -> str:
-    """
-    Extract the most frequent label from 'ArduinoData1' and encode it into a category.
-    """
-    gaze_data = pd.read_csv(gaze_file)
-    if 'ArduinoData1' not in gaze_data.columns:
-        raise ValueError(f"Gaze file {gaze_file} is missing 'ArduinoData1' column.")
-    
-    # Get the most frequent value in the 'ArduinoData1' column
-    most_frequent_label = gaze_data['ArduinoData1'].mode()[0]  # Mode returns the most frequent value
-    return most_frequent_label
-
-# Main function to create the dataset
 def create_features_dataset(processed_results_folder: Path) -> pd.DataFrame:
     """
-    Process all *_yolo_*_features.csv and corresponding gaze files to generate the features dataset.
+    This function will extract YOLO and gaze features from their respective CSV files,
+    match them by frame, and combine them side by side into a single DataFrame.
     """
-    processed_files = {file.stem: file for file in processed_results_folder.rglob("*.csv")}
-    dataset = []
+    # Get all processed files in the folder (excluding already processed feature files)
+    processed_files = {file.stem: file for file in processed_results_folder.rglob("features.csv")}
+    if not processed_files:
+        print("No processed files found in the directory.")
+        return pd.DataFrame()  # Return empty DataFrame if no files are found
 
-    for file_stem, yolo_file in processed_files.items():
-        # Only process *_yolo_*_features.csv files
-        if '_yolo_' not in file_stem or '_features' not in file_stem:
-            continue
-        
-        # Construct the expected gaze file path based on the YOLO file's directory
-        yolo_dir = yolo_file.parent
-        gaze_file_stem = file_stem.replace('_yolo_', '_gaze_').replace('_features', '')
-        gaze_file = yolo_dir / f"{gaze_file_stem}.csv"
-        
-        if not gaze_file.exists():
-            print(f"Skipping {yolo_file}: Corresponding gaze file not found.")
-            continue
-        
-        try:
-            # Process YOLO file
-            yolo_features = process_yolo_data(yolo_file)
-            
-            # Process gaze file and get the encoded label
-            label = process_gaze_data(gaze_file)
-            
-            # Combine features and label
-            yolo_features['label'] = label
-            dataset.append(yolo_features)
-        
-        except ValueError as e:
-            print(f"Error processing files: {e}")
-            continue
-
-    # Combine all data into a single DataFrame
-    if dataset:
-        features_df = pd.concat(dataset, ignore_index=True)
-    else:
-        features_df = pd.DataFrame()
+    # Get YOLO and gaze feature files
+    yolo_files = {name: file for name, file in processed_files.items() 
+            if "yolo" in name.lower() and "features.csv" in name.lower()}
     
-    return features_df
+    gaze_files = {name: file for name, file in processed_files.items() 
+              if "gaze" in name.lower() and "features.csv" in name.lower()}
+
+    print(f"Found {len(yolo_files)} YOLO files and {len(gaze_files)} gaze files.")  # Debug line
+
+    if not yolo_files or not gaze_files:
+        print("No YOLO or gaze feature files found.")
+        return pd.DataFrame()  # Return empty DataFrame if no feature files are found
+
+    # Initialize an empty list to store the combined rows
+    combined_features = []
+
+    # Loop through each YOLO file
+    for name, yolo_file in yolo_files.items():
+        # Try to match the corresponding gaze file
+        matching_gaze_file = gaze_files.get(name.replace("yolo", "gaze"), None)
+        
+        if matching_gaze_file:
+            # Read both YOLO and gaze files
+            yolo_df = pd.read_csv(yolo_file)
+            gaze_df = pd.read_csv(matching_gaze_file)
+
+            # Check if they have the same number of rows
+            if yolo_df.shape[0] != gaze_df.shape[0]:
+                print(f"Mismatch in row count between {yolo_file} and {matching_gaze_file}. Skipping.")
+                continue  # Skip this pair if row counts do not match
+
+            # Concatenate YOLO and gaze features side by side
+            combined_row = pd.concat([yolo_df, gaze_df], axis=1)
+            combined_features.append(combined_row)
+        else:
+            print(f"No matching gaze file found for {yolo_file}")
+
+    # Check if combined_features is empty before concatenating
+    if not combined_features:
+        print("No valid feature pairs were found.")
+        return pd.DataFrame()  # Return empty DataFrame if no valid rows are combined
+
+    print(f"Combining {len(combined_features)} feature pairs.")  # Debug line
+
+    # Create a DataFrame from the combined features
+    final_df = pd.concat(combined_features, ignore_index=True)
+    
+    return final_df
+
 
 # Main function to handle the workflow
 def main(zip_file_path: str, output_folder: Path) -> None:
@@ -110,10 +86,7 @@ def main(zip_file_path: str, output_folder: Path) -> None:
 
     # Locate the `Processed_results` folder
     processed_results_folder = output_folder
-    if not processed_results_folder.exists():
-        print(f"Error: '{processed_results_folder}' does not exist.")
-        return
-    
+
     # Create the features dataset
     features_df = create_features_dataset(processed_results_folder)
     
