@@ -12,7 +12,6 @@ def main():
     """
     base_path = Path("C:/Users/bayer/Documents/HCI")
     output_folder = base_path / "Data/Processed_results"
-    pair_folder = base_path/"Data/Pairs"
     yolo_folder = base_path / "Data/Object_detection_YOLO"
     video_folder = base_path / "Data/Input_traffic_videos"
     varjo_folder = base_path / "Data/Gaze_tracking_Varjo"
@@ -28,9 +27,15 @@ def main():
     yolo_files = {file.stem: file for file in yolo_folder.rglob("*.csv")}
     gaze_files = {file.stem: file for file in varjo_folder.rglob("*.csv")}
 
+    print("Video files:", video_files)
+    print("YOLO files:", yolo_files)
+    print("Gaze files:", gaze_files)
+
+
     # Match files based on their base filenames and process them
     for filename in video_files:
-        if filename in yolo_files and filename in gaze_files:
+        if filename in yolo_files and filename in gaze_files and filename in video_files:
+            print(f"Processing files for {filename}")
             video_path = video_files[filename]
             yolo_path = yolo_files[filename]
             gaze_path = gaze_files[filename]

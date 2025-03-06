@@ -2,7 +2,20 @@ import pathlib as Path
 import pandas as pd
 import math
 
-def create_segments(gaze_data: pd.DataFrame, video_data: pd.DataFrame, yolo_data: pd.DataFrame, output_path: Path, video_path: Path, frame_rate: float, segment_length: int = 5, window_increment: int = 1):
+import pathlib as Path 
+import pandas as pd
+import math
+
+def create_segments(
+    gaze_data: pd.DataFrame,
+    video_data: pd.DataFrame,
+    yolo_data: pd.DataFrame,
+    output_path: Path,
+    video_path: Path,
+    frame_rate: float,
+    segment_length: int = 5,
+    window_increment: int = 1
+):
     """
     Create segments from the given gaze, video, and YOLO data, then save them directly to the correct folders.
 
@@ -27,20 +40,21 @@ def create_segments(gaze_data: pd.DataFrame, video_data: pd.DataFrame, yolo_data
     video_base_name = video_path.stem
     file_folder = output_path / video_base_name
     file_folder.mkdir(parents=True, exist_ok=True)
+
     # Loop through the video frames to create segments
     for start_frame in range(0, num_frames - segment_frames + 1, window_step):
         end_frame = start_frame + segment_frames - 1
-        # Extract  data for the segment 
+
+        # Extract YOLO and gaze data for the segment (without forcing them to match 1-to-1)
         yolo_segment = yolo_data[(yolo_data['frame'] >= start_frame) & (yolo_data['frame'] <= end_frame)]
         gaze_segment = gaze_data[(gaze_data['VideoFrame'] >= start_frame) & (gaze_data['VideoFrame'] <= end_frame)]
-
-        # Ensure the folder exists        file_folder.mkdir(parents=True, exist_ok=True)
 
         # Save YOLO data for the segment
         yolo_filename = f"{video_base_name}_yolo_{start_frame:04d}-{end_frame:04d}.csv"
         gaze_filename = f"{video_base_name}_gaze_{start_frame:04d}-{end_frame:04d}.csv"
-        
+
         yolo_segment.to_csv(file_folder / yolo_filename, index=False)
         gaze_segment.to_csv(file_folder / gaze_filename, index=False)
 
     print(f"Segments for {video_base_name} have been saved to {file_folder}")
+
