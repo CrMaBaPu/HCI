@@ -21,17 +21,19 @@ def create_features_dataset(processed_results_folder: Path) -> pd.DataFrame:
     match them by frame, and combine them side by side into a single DataFrame.
     """
     # Get all processed files in the folder (excluding already processed feature files)
-    processed_files = {file.stem: file for file in processed_results_folder.rglob("features.csv")}
+    print(processed_results_folder)
+    processed_files = {file.stem: file for file in processed_results_folder.rglob("*features.csv")}
+    print(processed_files)
     if not processed_files:
         print("No processed files found in the directory.")
         return pd.DataFrame()  # Return empty DataFrame if no files are found
 
     # Get YOLO and gaze feature files
     yolo_files = {name: file for name, file in processed_files.items() 
-            if "yolo" in name.lower() and "features.csv" in name.lower()}
+            if "yolo" in name.lower()}
     
     gaze_files = {name: file for name, file in processed_files.items() 
-              if "gaze" in name.lower() and "features.csv" in name.lower()}
+              if "gaze" in name.lower()}
 
     print(f"Found {len(yolo_files)} YOLO files and {len(gaze_files)} gaze files.")  # Debug line
 
