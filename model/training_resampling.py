@@ -7,6 +7,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils import resample
+from sklearn.model_selection import GridSearchCV
 
 # Create output directory
 output_dir = 'model/plots'
@@ -21,15 +22,27 @@ y = features_df['label']
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X)
 
-# Initialize model
-rf_model = RandomForestRegressor(n_estimators=2000, random_state=42)
-
 # Balance the dataset using resampling
 balanced_X, balanced_y = resample(X_scaled, y, replace=True, random_state=42)
 
-# Train the model on the balanced dataset
-rf_model.fit(balanced_X, balanced_y)
-y_pred = rf_model.predict(X_scaled)
+# Define model and hyperparameter grid
+rf_model = RandomForestRegressor(random_state=42)
+param_grid = {
+    'n_estimators': [500, 1000, 2000],
+    'max_depth': [10, 20, None],
+    'min_samples_split': [2, 5, 10],
+    'min_samples_leaf': [1, 2, 4]
+}
+
+# Perform Grid Search
+grid_search = GridSearchCV(rf_model, param_grid, cv=5, scoring='neg_mean_squared_error', n_jobs=-1, verbose=2)
+grid_search.fit(balanced_X, balanced_y)
+
+# Best model after hyperparameter tuning
+best_rf_model = grid_search.best_estimator_
+
+# Train and evaluate the best model
+y_pred = best_rf_model.predict(X_scaled)
 residuals = y - y_pred
 
 # Calculate metrics
@@ -61,7 +74,7 @@ plt.savefig(os.path.join(output_dir, 'prediction_vs_actual.png'))
 plt.close()
 
 # Feature Importance
-importances = rf_model.feature_importances_
+importances = best_rf_model.feature_importances_
 sorted_idx = np.argsort(importances)[::-1]
 plt.figure(figsize=(10, 6))
 plt.bar(X.columns[sorted_idx], importances[sorted_idx])
@@ -73,14 +86,15 @@ plt.savefig(os.path.join(output_dir, 'feature_importance.png'))
 plt.close()
 
 # SHAP Analysis
-explainer = shap.TreeExplainer(rf_model)
+explainer = shap.TreeExplainer(best_rf_model)
 shap_values = explainer.shap_values(X_scaled)
 shap.summary_plot(shap_values, X, show=False)
 plt.savefig(os.path.join(output_dir, 'shap_summary.png'))
 plt.close()
 
 # Print Results
-print("Model Performance on Balanced Dataset:")
+print("Model Performance after Hyperparameter Tuning:")
+print(f"Best Parameters: {grid_search.best_params_}")
 print(f"MAE: {mae:.4f}")
 print(f"MSE: {mse:.4f}")
 print(f"RMSE: {rmse:.4f}")
