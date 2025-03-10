@@ -1,150 +1,136 @@
 import numpy as np
 import pandas as pd
 
-# Standard Deviation in X and Y
+# Standard Deviation in X and Y (for each frame)
 def std_x_y(gaze_data: pd.DataFrame) -> tuple:
     """
-    Calculate the standard deviation of gaze locations in the X and Y axes.
+    Calculate the standard deviation of gaze locations in the X and Y axes for each frame.
     
     Args:
     - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
     
     Returns:
-    - tuple: A tuple containing the standard deviations of gaze locations in the X and Y axes (std_x, std_y).
+    - tuple: A tuple containing the standard deviations of gaze locations in the X and Y axes (std_x, std_y) for each frame.
     """
-    std_x = np.std(gaze_data['PixelX'])
-    std_y = np.std(gaze_data['PixelY'])
+    std_x = gaze_data.groupby('VideoFrame')['PixelX'].std()
+    std_y = gaze_data.groupby('VideoFrame')['PixelY'].std()
     return std_x, std_y
 
-# Velocity: Distance between consecutive points (normalized by frame)
-def calculate_velocity(gaze_data: pd.DataFrame) -> np.ndarray:
+# Velocity: Distance between consecutive points for each frame
+def calculate_velocity(gaze_data: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate the velocity (distance) between consecutive gaze points.
+    Calculate the velocity (distance) between consecutive gaze points for each frame.
     
     Args:
     - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
     
     Returns:
-    - np.ndarray: An array of velocities, where each element represents the distance between two consecutive gaze points.
+    - pd.DataFrame: DataFrame containing the velocity for each gaze point.
     """
-    velocities = []
-    previous_gaze = None
-    for gaze_row in gaze_data.itertuples(index=False):
-        current_gaze = (gaze_row.PixelX, gaze_row.PixelY)
-        if previous_gaze is not None:
-            distance = np.sqrt((current_gaze[0] - previous_gaze[0])**2 + (current_gaze[1] - previous_gaze[1])**2)
-            velocities.append(distance)
-        previous_gaze = current_gaze
-    return np.array(velocities)
+    gaze_data['velocity'] = np.sqrt((gaze_data['PixelX'].diff() ** 2) + (gaze_data['PixelY'].diff() ** 2))
+    gaze_data['velocity'].fillna(0)
+    return gaze_data
 
-# Acceleration: Change in velocity
-def calculate_acceleration(velocities: np.ndarray) -> np.ndarray:
+# Acceleration: Change in velocity for each frame
+def calculate_acceleration(gaze_data: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate the acceleration (change in velocity) between consecutive gaze points.
+    Calculate the acceleration (change in velocity) between consecutive gaze points for each frame.
     
     Args:
-    - velocities (np.ndarray): Array of velocities, where each element represents the distance between two consecutive gaze points.
+    - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY', 'velocity'].
     
     Returns:
-    - np.ndarray: An array of accelerations, where each element represents the change in velocity between consecutive gaze points.
+    - pd.DataFrame: DataFrame containing the acceleration for each gaze point.
     """
-    accelerations = np.diff(velocities)  # Change in velocity between frames
-    return accelerations
+    gaze_data['acceleration'] = gaze_data['velocity'].diff().fillna(0)
+    return gaze_data
 
-# Saccades: Gaze shifts larger than a given threshold
-def calculate_saccades(gaze_data: pd.DataFrame, threshold: float = 50) -> int:
+# Saccades: Gaze shifts larger than a given threshold (for each frame)
+def calculate_saccades(gaze_data: pd.DataFrame, threshold: float = 50) -> pd.DataFrame:
     """
-    Count the number of saccades (rapid gaze shifts) where the distance between consecutive gaze points exceeds a threshold.
+    Identify saccades (rapid gaze shifts) where the distance between consecutive gaze points exceeds a threshold.
     
     Args:
     - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
-    - threshold (float): Minimum distance (in pixels) to consider a gaze shift as a saccade. Default is 50 pixels.
+    - threshold (float): Minimum distance (in pixels) to consider a gaze shift as a saccade.
     
     Returns:
-    - int: The number of saccades (gaze shifts that exceed the threshold distance).
+    - pd.DataFrame: DataFrame with a column indicating saccades for each gaze point (1 for saccade, 0 for no saccade).
     """
-    saccades = 0
-    previous_gaze = None
-    for gaze_row in gaze_data.itertuples(index=False):
-        current_gaze = (gaze_row.PixelX, gaze_row.PixelY)
-        if previous_gaze is not None:
-            distance = np.sqrt((current_gaze[0] - previous_gaze[0])**2 + (current_gaze[1] - previous_gaze[1])**2)
-            if distance >= threshold:
-                saccades += 1
-        previous_gaze = current_gaze
-    return saccades
+    gaze_data['saccade'] = np.sqrt((gaze_data['PixelX'].diff() ** 2) + (gaze_data['PixelY'].diff() ** 2)) > threshold
+    gaze_data['saccade'] = gaze_data['saccade'].astype(int)
+    gaze_data['saccade'].fillna(0)
+    return gaze_data
 
-# Average Fixation Duration
-def average_fixation_duration(gaze_data: pd.DataFrame, fixation_threshold: int = 10) -> float:
+# Fixation Duration: Calculate the duration of fixations (number of consecutive frames with the same gaze point)
+def average_fixation_duration(gaze_data: pd.DataFrame) -> pd.DataFrame:
     """
-    Calculate the average duration of fixations, where a fixation is defined as a series of consecutive frames with the same gaze point.
+    Calculate the average fixation duration for each frame.
     
     Args:
     - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
-    - fixation_threshold (int): The minimum number of frames required to consider a gaze as a fixation. Default is 10 frames.
     
     Returns:
-    - float: The average duration (in frames) of fixations.
+    - pd.DataFrame: DataFrame containing the fixation duration for each frame.
     """
-    gaze_durations = []
-    current_fixation = None
-    for gaze_row in gaze_data.itertuples(index=False):
-        current_gaze = (gaze_row.PixelX, gaze_row.PixelY)
-        if current_fixation is None:
-            current_fixation = (current_gaze, 1)
-        elif current_gaze == current_fixation[0]:
-            current_fixation = (current_gaze, current_fixation[1] + 1)
-        else:
-            if current_fixation[1] >= fixation_threshold:
-                gaze_durations.append(current_fixation[1])
-            current_fixation = (current_gaze, 1)
+    gaze_data['fixation_duration'] = gaze_data.groupby('VideoFrame')['VideoFrame'].transform('size')
+    return gaze_data
 
-    if current_fixation and current_fixation[1] >= fixation_threshold:
-        gaze_durations.append(current_fixation[1])
+# Speed Across Frames (Average Distance over a range of frames using sliding window)
+def speed_across_frames(gaze_data: pd.DataFrame, frame_range: int = 5) -> pd.DataFrame:
+    """
+    Calculate the average speed across a sliding window of frames.
     
-    return np.mean(gaze_durations) if gaze_durations else 0.0
-
-# Speed Across Frames (Average Distance over a range of frames)
-def speed_across_frames(gaze_data: pd.DataFrame, frame_range: int = 5) -> np.ndarray:
-    speeds = []
+    Args:
+    - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
+    - frame_range (int): The number of frames over which to calculate the average speed.
+    
+    Returns:
+    - pd.DataFrame: DataFrame containing the speed across frames for each frame.
+    """
+    gaze_data['speed_across_frames'] = np.nan
     for i in range(len(gaze_data) - frame_range):
-        distance = np.sqrt((gaze_data['PixelX'][i+frame_range] - gaze_data['PixelX'][i])**2 +
-                           (gaze_data['PixelY'][i+frame_range] - gaze_data['PixelY'][i])**2)
-        speeds.append(distance / frame_range)
-    return np.array(speeds)
+        start_frame = gaze_data.iloc[i]
+        end_frame = gaze_data.iloc[i + frame_range]
+        distance = np.sqrt((end_frame['PixelX'] - start_frame['PixelX']) ** 2 + (end_frame['PixelY'] - start_frame['PixelY']) ** 2)
+        gaze_data.at[i, 'speed_across_frames'] = distance / frame_range
+    gaze_data['speed_across_frames'].fillna(0)
+    return gaze_data
 
-# Function to process gaze data and return the feature DataFrame
+# Function to process gaze data and return the feature DataFrame for each frame
 def process_gaze_data(gaze_data: pd.DataFrame) -> pd.DataFrame:
     """
-    Process gaze data to extract a set of features including standard deviation of gaze, 
-    average velocity, average acceleration, fixation duration, and the number of saccades.
+    Process gaze data to extract a set of features for each frame including standard deviation of gaze,
+    velocity, acceleration, fixation duration, and the number of saccades.
     
     Args:
     - gaze_data (pd.DataFrame): DataFrame containing gaze points with columns: ['VideoFrame', 'PixelX', 'PixelY'].
     
     Returns:
-    - pd.DataFrame: A DataFrame containing the extracted features. The columns include:
-        'std_x', 'std_y', 'average_velocity', 'average_acceleration', 
-        'average_fixation_duration', and 'saccades'.
+    - pd.DataFrame: A DataFrame containing the extracted features for each frame, such as:
+        'std_x', 'std_y', 'average_velocity', 'average_acceleration', 'fixation_duration', 'saccades', and 'average_speed_across_frames'.
     """
     # Calculate individual features
+    gaze_data = calculate_velocity(gaze_data)
+    gaze_data = calculate_acceleration(gaze_data)
+    gaze_data = calculate_saccades(gaze_data)
+    gaze_data = average_fixation_duration(gaze_data)
+    gaze_data = speed_across_frames(gaze_data)
+    
+    # Calculate standard deviations for each frame
     std_x, std_y = std_x_y(gaze_data)
-    velocities = calculate_velocity(gaze_data)
-    accelerations = calculate_acceleration(velocities)
-    fixation_duration = average_fixation_duration(gaze_data)
-    saccades = calculate_saccades(gaze_data)
-    speed_frames = speed_across_frames(gaze_data)
-    
-    # Create the feature DataFrame
-    features = {
-        'std_x': std_x,
-        'std_y': std_y,
-        'average_velocity': np.mean(velocities) if len(velocities) > 0 else 0.0,
-        'average_acceleration': np.mean(accelerations) if len(accelerations) > 0 else 0.0,
-        'average_fixation_duration': fixation_duration,
-        'saccades': saccades,
-        'average_speed_across_frames': np.mean(speed_frames) if len(speed_frames) > 0 else 0.0,
-    }
-    
-    return pd.DataFrame([features])
+    gaze_data['std_x'] = gaze_data['VideoFrame'].map(std_x)
+    gaze_data['std_y'] = gaze_data['VideoFrame'].map(std_y)
 
+    # Group by frame and aggregate the features
+    features = gaze_data.groupby('VideoFrame').agg(
+        std_x=('std_x', 'first'),  # First std_x for each frame
+        std_y=('std_y', 'first'),  # First std_y for each frame
+        average_velocity=('velocity', 'mean'),
+        average_acceleration=('acceleration', 'mean'),
+        fixation_duration=('fixation_duration', 'mean'),
+        saccades=('saccade', 'sum'),
+        average_speed_across_frames=('speed_across_frames', 'mean')
+    ).reset_index()
+    
+    return features

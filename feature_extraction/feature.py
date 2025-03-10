@@ -88,16 +88,16 @@ def main(zip_file_path: str, output_folder: Path, frame_width: float, frame_heig
             gaze_features.to_csv(output_path / feature_filename, index=False)
             print(f"Saved Gaze features to: {output_path / feature_filename}")
 
-            #Process gaze yolo features
-            combined_features = process_yolo_gaze_data(gaze_data, yolo_data, target_classes=['car', 'bicycle', 'person'])
-            # Save combined features
-            base_name = matching_gaze_file.stem
-            feature_filename = f"{base_name}_combi_features.csv"
-            relative_folder = yolo_file.parent.relative_to(processed_results_folder)
-            output_path = output_folder / relative_folder
-            output_path.mkdir(parents=True, exist_ok=True)
-            combined_features.to_csv(output_path / feature_filename, index=False)
-            print(f"Saved combined features to: {output_path / feature_filename}")
+            # #Process gaze yolo features
+            # combined_features = process_yolo_gaze_data(gaze_data, yolo_data, target_classes=['car', 'bicycle', 'person'])
+            # # Save combined features
+            # base_name = matching_gaze_file.stem
+            # feature_filename = f"{base_name}_combi_features.csv"
+            # relative_folder = yolo_file.parent.relative_to(processed_results_folder)
+            # output_path = output_folder / relative_folder
+            # output_path.mkdir(parents=True, exist_ok=True)
+            # combined_features.to_csv(output_path / feature_filename, index=False)
+            # print(f"Saved combined features to: {output_path / feature_filename}")
 
     # Re-zip the contents of the extracted folder back to Data.zip
     zip_folder(extract_folder, zip_file_path)
