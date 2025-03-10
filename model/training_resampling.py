@@ -19,8 +19,8 @@ os.makedirs(output_dir, exist_ok=True)
 
 # Load dataset
 features_df = pd.read_csv('model/features_dataset.csv')
-X = features_df.drop('label', axis=1)
-y = features_df['label']
+X = features_df.drop('most_common_arduino', axis=1)
+y = features_df['most_common_arduino']
 
 # Define a function to randomly modify the labels within a ±2.5 range to change the clinic setup that rounded the labels
 def modify_labels(y_true):

@@ -163,9 +163,6 @@ def process_yolo_gaze_data(gaze_data: pd.DataFrame, yolo_data: pd.DataFrame, tar
     
     # Time Spent in Each Object's Bounding Box per Frame
     time_spent_in_bbox = time_spent_in_each_bbox(gaze_data, yolo_data)
-
-    # Calculate the most common ArduinoData1 value for the entire dataset (this is not per-frame, but can be adjusted if needed)
-    most_common_arduino = gaze_data['ArduinoData1'].mode()[0]  # Get the most frequent ArduinoData1 value
     
     # Prepare final features
     features = []

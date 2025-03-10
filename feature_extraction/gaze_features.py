@@ -97,6 +97,20 @@ def speed_across_frames(gaze_data: pd.DataFrame, frame_range: int = 5) -> pd.Dat
     gaze_data['speed_across_frames'].fillna(0)
     return gaze_data
 
+# Function to calculate the most common ArduinoData1 value
+def calculate_most_common_arduino_per_frame(gaze_data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate the most common ArduinoData1 value per frame.
+    
+    Args:
+    - gaze_data (pd.DataFrame): DataFrame containing gaze points with a column: 'ArduinoData1'.
+    
+    Returns:
+    - pd.DataFrame: A DataFrame with the most common ArduinoData1 value per frame.
+    """
+    most_common_arduino_per_frame = gaze_data.groupby('VideoFrame')['ArduinoData1'].agg(lambda x: x.mode()[0])
+    return most_common_arduino_per_frame
+
 # Function to process gaze data and return the feature DataFrame for each frame
 def process_gaze_data(gaze_data: pd.DataFrame) -> pd.DataFrame:
     """
@@ -122,6 +136,9 @@ def process_gaze_data(gaze_data: pd.DataFrame) -> pd.DataFrame:
     gaze_data['std_x'] = gaze_data['VideoFrame'].map(std_x)
     gaze_data['std_y'] = gaze_data['VideoFrame'].map(std_y)
 
+    # Calculate the most common ArduinoData1 value for each frame
+    most_common_arduino_per_frame = calculate_most_common_arduino_per_frame(gaze_data)
+    
     # Group by frame and aggregate the features
     features = gaze_data.groupby('VideoFrame').agg(
         std_x=('std_x', 'first'),  # First std_x for each frame
@@ -132,5 +149,8 @@ def process_gaze_data(gaze_data: pd.DataFrame) -> pd.DataFrame:
         saccades=('saccade', 'sum'),
         average_speed_across_frames=('speed_across_frames', 'mean')
     ).reset_index()
-    
+
+    # Add the most common ArduinoData1 value per frame as a new feature
+    features['most_common_arduino'] = features['VideoFrame'].map(most_common_arduino_per_frame)
+
     return features

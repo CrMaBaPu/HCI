@@ -22,7 +22,8 @@ def create_features_dataset(processed_results_folder: Path) -> pd.DataFrame:
     """
     # Get all processed files in the folder (excluding already processed feature files)
     print(processed_results_folder)
-    processed_files = {file.stem: file for file in processed_results_folder.rglob("*features.csv")}
+    processed_files = {file.stem: file for file in processed_results_folder.rglob("*features.csv") 
+                       if "combi" not in file.stem.lower()}
     print(processed_files)
     if not processed_files:
         print("No processed files found in the directory.")
