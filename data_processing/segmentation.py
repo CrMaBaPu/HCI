@@ -2,10 +2,6 @@ import pathlib as Path
 import pandas as pd
 import math
 
-import pathlib as Path 
-import pandas as pd
-import math
-
 def create_segments(
     gaze_data: pd.DataFrame,
     video_data: pd.DataFrame,
@@ -32,6 +28,10 @@ def create_segments(
     Returns:
     - None: The segments are saved directly to the file system.
     """
+    # Remove first frame from gaze data and adjust frame numbers
+    gaze_data = gaze_data[gaze_data['VideoFrame'] > 0].copy()
+    gaze_data['VideoFrame'] -= 1
+
     num_frames = video_data.shape[0]  # Total number of frames in the video
     frame_rate = math.ceil(frame_rate)
     segment_frames = int(segment_length * frame_rate)  # Number of frames in a 5-second segment

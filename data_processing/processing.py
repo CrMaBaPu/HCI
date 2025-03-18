@@ -74,6 +74,6 @@ def process_gaze_data(varjo_path: Path) -> pd.DataFrame:
     gaze_data_processed = gaze_data[['VideoFrame', 'PixelX', 'PixelY', 'ArduinoData1']]
     
     # Group by 'VideoFrame' and calculate the mean for the numeric columns
-    #gaze_data_mean = gaze_data_processed.groupby('VideoFrame', as_index=False).mean()
+    gaze_data_mean = gaze_data_processed.groupby('VideoFrame', as_index=False).mean()
             
-    return gaze_data_processed
+    return gaze_data_mean
