@@ -81,7 +81,11 @@ def load_and_process_data(zip_file_path: str, output_folder: Path) -> tuple:
     print(f"Processed YOLO data shape: {yolo_data.shape}")
 
     # Merge YOLO data with gaze data on 'Frame' to add Arduino data
-    yolo_data = yolo_data.merge(gaze_data[['Frame', 'ArduinoData1', 'vehicle_type', 'criticality', 'video_id' ]], on=('Frame','vehicle_type', 'criticality', 'video_id'), how='left')
+    # Calculate the average Arduino value for each frame
+    average_arduino_per_frame = gaze_data.groupby('Frame')['ArduinoData1'].mean().reset_index()
+
+    # Merge the YOLO data with the average Arduino value per frame
+    yolo_data = yolo_data.merge(average_arduino_per_frame, on='Frame', how='left')
 
     return gaze_data, yolo_data
 
@@ -249,6 +253,15 @@ def update_graphs(vehicle_type, criticality, arduino_score_range):
         title="Gaze Distribution"
     )
     gaze_boxplot_fig.update_traces(boxmean=True)
+
+    # gaze_data_aggregated = filtered_gaze.groupby('Frame').agg({'PixelX': 'mean', 'PixelY': 'mean'}).reset_index()
+    # gaze_boxplot_fig = px.box(
+    #     gaze_data_aggregated, 
+    #     y="PixelX", 
+    #     title="Gaze Distribution"
+    # )
+    # gaze_boxplot_fig.update_traces(boxmean=True)
+
 
     # --- Plot 6: Centroid Box Plot (Centroid X and Centroid Y) ---
     centroid_boxplot_fig = px.box(
