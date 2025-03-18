@@ -1,4 +1,4 @@
-import pathlib as Path 
+from pathlib import Path 
 import shutil
 from helper import unzip_folder, zip_folder
 from yolo_object_detection import generate_yolo_csv
@@ -11,11 +11,10 @@ from segmentation import create_segments
 base_path = Path("C:/Users/bayer/Documents/HCI")
 
 # ==========================================================
-# Function
+# helper function
 # ==========================================================
 
 def process_single_file(video_path, yolo_path, gaze_path, video_folder, output_folder):
-    """Helper function to process a single video, YOLO, and gaze file."""
     # Process the video, YOLO, and gaze data
     video_data, frame_rate = process_video(video_path)
     gaze_data = process_gaze_data(gaze_path)
@@ -28,7 +27,10 @@ def process_single_file(video_path, yolo_path, gaze_path, video_folder, output_f
 
     # Create segments and save them
     create_segments(gaze_data, video_data, yolo_data, output_path, video_path, frame_rate)
-
+    
+# ==========================================================
+# function
+# ==========================================================
 def process_dataset(path):
     """
     Handles the dataset processing workflow.
@@ -48,10 +50,10 @@ def process_dataset(path):
     unzip_folder(zip_file_path, extract_folder)
 
     extracted_data_path = extract_folder / "Data"
-    output_folder = extracted_data_path / "Processed_results"
-    yolo_folder = extracted_data_path / "Object_detection_YOLO"
-    video_folder = extracted_data_path / "Input_traffic_videos"
-    varjo_folder = extracted_data_path / "Gaze_tracking_Varjo"
+    output_folder = extracted_data_path / "Data/Processed_results"
+    yolo_folder = extracted_data_path / "Data/Object_detection_YOLO"
+    video_folder = extracted_data_path / "Data/Input_traffic_videos"
+    varjo_folder = extracted_data_path / "Data/Gaze_tracking_Varjo"
 
     # Generate YOLO CSV files if not already done
     if not any(yolo_folder.glob("*.csv")):
